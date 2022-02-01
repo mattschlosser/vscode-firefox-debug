@@ -4,6 +4,8 @@ import { vscodeUriToPath } from './pathMappingWizard';
 
 const folderVar = '${workspaceFolder}';
 
+const namedFolderVar = (name: string) => `\${workspaceFolder:${name}}`;
+
 export class DebugConfigurationProvider implements vscode.DebugConfigurationProvider {
 
 	/**
@@ -30,15 +32,25 @@ export class DebugConfigurationProvider implements vscode.DebugConfigurationProv
 			debugConfiguration.webRoot = vscodeUriToPath(folder.uri);
 		}
 
-		if (folder && (folder.uri.scheme === 'vscode-remote')) {
-
-			this.resolveWorkspaceFolder(folder, debugConfiguration);
-
-			this.checkLocal(debugConfiguration);
-
+		if (folder) {
+			this.resolveRemoteWorkspaceFolder(folder, debugConfiguration);
+		} else {
+			vscode.workspace.workspaceFolders?.forEach(folder => {
+				this.resolveRemoteWorkspaceFolder(folder, debugConfiguration);
+			});
 		}
 
 		return debugConfiguration;
+	}
+
+	private resolveRemoteWorkspaceFolder(
+		folder: vscode.WorkspaceFolder,
+		debugConfiguration: vscode.DebugConfiguration & (LaunchConfiguration | AttachConfiguration)
+	): void {
+		if (folder.uri.scheme == 'vscode-remote') {
+			this.resolveWorkspaceFolder(folder, debugConfiguration);
+			this.checkLocal(debugConfiguration);
+		}
 	}
 
 	private overrideFromSettings(
@@ -102,6 +114,7 @@ export class DebugConfigurationProvider implements vscode.DebugConfigurationProv
 		const uri = folder.uri.toString();
 		if (debugConfiguration.webRoot) {
 			debugConfiguration.webRoot = debugConfiguration.webRoot.replace(folderVar, uri);
+			debugConfiguration.webRoot = debugConfiguration.webRoot.replace(namedFolderVar(folder.name), uri);
 		}
 
 		if (debugConfiguration.pathMappings) {
@@ -111,9 +124,13 @@ export class DebugConfigurationProvider implements vscode.DebugConfigurationProv
 			for (const pathMapping of debugConfiguration.pathMappings) {
 				if (pathMapping.path) {
 
+					const resolvedPath = pathMapping.path
+						.replace(folderVar, uri)
+						.replace(namedFolderVar(folder.name), uri);
+
 					resolvedPathMappings.push({
 						url: pathMapping.url,
-						path: pathMapping.path.replace(folderVar, uri)
+						path: resolvedPath
 					});
 
 				} else {
